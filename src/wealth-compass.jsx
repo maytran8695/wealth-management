@@ -8,23 +8,27 @@ import {
   X, DollarSign, Home, Bitcoin, Shield, Building2, Coins, Compass,
   ChevronRight, Send, Loader2, Check, Bell, BellOff, Pencil, Link2,
   RefreshCw, Landmark, Star, CalendarClock, Settings, Zap, Info,
-  Sun, Moon, ChevronDown, ChevronLeft, Eye, EyeOff, RotateCcw,
+  Sun, Moon, ChevronDown, ChevronLeft, Eye, EyeOff, RotateCcw, ArrowUp,
 } from "lucide-react";
 import { mockChatReply, mockInterpret } from "./mockAdvisor.js";
 
 /* ---------------------------------- THEME ----------------------------------
- * One green hue family only, per the dataviz skill's ordinal-ramp rule (risk
- * tiers are a position-in-sequence, not independent categories): tier1..4 is
- * a single-hue, monotone-lightness ramp, validated with
- * scripts/validate_palette.js --ordinal for both surfaces. `accent` is the
- * separate brand color used for buttons/CTAs (UI chrome, not chart data).
+ * `accent` is the single brand color for buttons/CTAs (UI chrome, not chart
+ * data). Chart/data colors are a separate categorical 8-hue set (cat*) plus a
+ * status pair (statusWarning/statusCritical) — both validated for CVD-safety
+ * and contrast against these exact surfaces with
+ * dataviz/scripts/validate_palette.js (adjacent pairlist, both modes). Do not
+ * hand-pick replacements without re-running that validator.
  * --------------------------------------------------------------------------- */
 const DARK_THEME = {
   bg: "#0A130E", bgPanel: "#101D16", bgPanel2: "#16271D",
   border: "#233A2C", borderLight: "#31503C",
   headerBg: "rgba(10,19,14,0.9)",
   accent: "#3FA873", accentText: "#7FE0AA", onAccent: "#0A130E", accentSoft: "#1B3F2C",
-  tier1: "#A9E8C4", tier2: "#6FCF97", tier3: "#3FA873", tier4: "#237A54",
+  catBlue: "#3987e5", catOrange: "#d95926", catAqua: "#199e70", catYellow: "#c98500",
+  catMagenta: "#d55181", catGreen: "#008300", catViolet: "#9085e9", catRed: "#e66767",
+  catYellowText: "#E8C97A",
+  statusWarning: "#fab219", statusCritical: "#d03b3b",
   text: "#EDF5EF", textMuted: "#9AB2A2", textFaint: "#657A6C",
   danger: "#C4746A", success: "#7FA88C",
 };
@@ -33,7 +37,10 @@ const LIGHT_THEME = {
   border: "#D7ECDD", borderLight: "#BFE0CB",
   headerBg: "rgba(243,250,246,0.88)",
   accent: "#1F6B49", accentText: "#15532E", onAccent: "#FFFFFF", accentSoft: "#DCF2E3",
-  tier1: "#6FC090", tier2: "#48A876", tier3: "#2A8058", tier4: "#134A32",
+  catBlue: "#2a78d6", catOrange: "#eb6834", catAqua: "#1baf7a", catYellow: "#eda100",
+  catMagenta: "#e87ba4", catGreen: "#008300", catViolet: "#4a3aa7", catRed: "#e34948",
+  catYellowText: "#8A6423",
+  statusWarning: "#fab219", statusCritical: "#d03b3b",
   text: "#16241C", textMuted: "#4E6B58", textFaint: "#7B9585",
   danger: "#B23B30", success: "#3F8F4F",
 };
@@ -41,12 +48,23 @@ const LIGHT_THEME = {
 // render picks up the active theme without threading context everywhere.
 const C = { ...LIGHT_THEME };
 
+// Risk tiers are ordered (An toàn → Đầu cơ) but read better with distinct
+// hues than a monochrome ramp — validated as a 4-slot categorical set
+// (aqua/blue/green/red passes adjacent CVD + normal-vision floor both modes).
 const TIERS = {
-  1: { label: "An toàn", get color() { return C.tier1; } },
-  2: { label: "Ổn định tăng trưởng", get color() { return C.tier2; } },
-  3: { label: "Tăng trưởng cao", get color() { return C.tier3; } },
-  4: { label: "Đầu cơ", get color() { return C.tier4; } },
+  1: { label: "An toàn", get color() { return C.catAqua; } },
+  2: { label: "Ổn định tăng trưởng", get color() { return C.catBlue; } },
+  3: { label: "Tăng trưởng cao", get color() { return C.catGreen; } },
+  4: { label: "Đầu cơ", get color() { return C.catRed; } },
 };
+
+// Fixed slot order per category (never reorder — that's what keeps the
+// validated adjacent-CVD guarantee from color-formula.md intact).
+const CATEGORY_COLOR_KEY = {
+  cash: "catBlue", gold: "catOrange", insurance: "catAqua", stock: "catYellow",
+  realestate: "catMagenta", business: "catGreen", crypto: "catViolet", other: "catRed",
+};
+function categoryColor(category) { return C[CATEGORY_COLOR_KEY[category]] || C.catRed; }
 
 const CATEGORIES = {
   cash: { label: "Tiền mặt & Tiết kiệm", icon: Wallet, tier: 1, syncable: true },
@@ -112,12 +130,12 @@ function sumLiquidAssets(assets) {
 }
 function dtiBand(dti) {
   if (dti <= 36) return { label: "Lành mạnh", color: C.success };
-  if (dti <= 43) return { label: "Cần thận trọng", color: C.accent };
+  if (dti <= 43) return { label: "Cần thận trọng", color: C.statusWarning };
   return { label: "Rủi ro cao", color: C.danger };
 }
 function runwayBand(months) {
   if (months >= 6) return { label: "An toàn", color: C.success };
-  if (months >= 3) return { label: "Chấp nhận được", color: C.accent };
+  if (months >= 3) return { label: "Chấp nhận được", color: C.statusWarning };
   return { label: "Mỏng, rủi ro thanh khoản", color: C.danger };
 }
 function cagr(history) {
@@ -219,6 +237,7 @@ function seedMockData() {
     { id: genId(), category: "realestate", name: "Căn hộ Đà Nẵng (cho thuê)", value: 2800000000, costBasis: 2400000000, source: "manual", updatedAt: todayStr(), note: "Cho thuê 12tr/tháng" },
     { id: genId(), category: "insurance", name: "Bảo hiểm nhân thọ - giá trị hoàn lại", value: 60000000, costBasis: "", source: "manual", updatedAt: todayStr(), note: "" },
     { id: genId(), category: "crypto", name: "Ví BTC/ETH", value: 45000000, costBasis: 38000000, source: "manual", updatedAt: todayStr(), note: "", purchasedAt: monthsAgoStr(9) },
+    { id: genId(), category: "business", name: "Cổ phần công ty gia đình", value: 180000000, costBasis: 150000000, source: "manual", updatedAt: todayStr(), note: "", purchasedAt: monthsAgoStr(18) },
   ];
   const liabilities = [
     { id: genId(), name: "Vay mua nhà VCB", balance: 1600000000, interestRate: 12.5, termMonths: 180, dueDate: "", accountId: "acc1", note: "" },
@@ -314,41 +333,53 @@ const TERMS = {
 };
 
 function InfoTag({ termKey }) {
-  const [open, setOpen] = useState(false);
   const t = TERMS[termKey];
   if (!t) return null;
   return (
-    <>
-      <button onClick={() => setOpen(true)} style={{ color: C.textFaint, display: "inline-flex", verticalAlign: "middle", marginLeft: 4 }}><Info size={13} /></button>
-      {open && (
-        <ModalShell title={t.term} onClose={() => setOpen(false)}>
-          <div style={{ fontSize: 13.5, color: C.textMuted, lineHeight: 1.7 }}>{t.def}</div>
-        </ModalShell>
-      )}
-    </>
+    <span className="relative inline-flex group" style={{ verticalAlign: "middle", marginLeft: 4 }}>
+      <Info size={13} color={C.textFaint} style={{ cursor: "help" }} />
+      <span className="absolute bottom-full opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-opacity duration-150 pointer-events-none"
+        style={{ left: "50%", transform: "translateX(-50%)", marginBottom: 6, width: 230, background: C.bgPanel2, border: `1px solid ${C.borderLight}`, borderRadius: 10, padding: "8px 10px", boxShadow: "0 6px 18px rgba(0,0,0,0.18)", zIndex: 50 }}>
+        <span className="block" style={{ fontSize: 11, fontWeight: 600, color: C.text, marginBottom: 3 }}>{t.term}</span>
+        <span className="block" style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5, whiteSpace: "normal" }}>{t.def}</span>
+      </span>
+    </span>
   );
 }
 
 /* -------------------------------- BOTTOM NAV -------------------------------- */
-function BottomNav({ tabs, tab, setTab, homeTab }) {
+function BottomNav({ tabs, tab, setTab }) {
   const idx = Math.max(0, tabs.findIndex((t) => t.id === tab));
   const prev = tabs[(idx - 1 + tabs.length) % tabs.length];
   const next = tabs[(idx + 1) % tabs.length];
   return (
-    <div className="rounded-2xl p-2.5 flex items-center justify-between gap-2" style={{ background: C.bgPanel, border: `1px solid ${C.border}` }}>
+    <div className="flex items-center justify-between gap-2">
       <button onClick={() => setTab(prev.id)} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm min-w-0"
         style={{ background: "transparent", border: `1px solid ${C.borderLight}`, color: C.textMuted }}>
         <ChevronLeft size={15} style={{ flexShrink: 0 }} /> <span className="truncate">{prev.label}</span>
-      </button>
-      <button onClick={() => setTab(homeTab)} title="Trang chủ" className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm flex-shrink-0"
-        style={{ background: `linear-gradient(135deg, ${C.accent}, ${C.accentText})`, color: C.onAccent, fontWeight: 500 }}>
-        <Home size={15} />
       </button>
       <button onClick={() => setTab(next.id)} className="flex items-center gap-1 px-3 py-2 rounded-xl text-sm min-w-0"
         style={{ background: "transparent", border: `1px solid ${C.borderLight}`, color: C.textMuted }}>
         <span className="truncate">{next.label}</span> <ChevronRight size={15} style={{ flexShrink: 0 }} />
       </button>
     </div>
+  );
+}
+
+function ScrollToTopButton() {
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  if (!visible) return null;
+  return (
+    <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} title="Lên đầu trang"
+      style={{ position: "fixed", right: 18, bottom: 18, width: 46, height: 46, borderRadius: "50%", background: C.accent, color: C.onAccent, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 16px rgba(0,0,0,0.25)", border: "none", cursor: "pointer", zIndex: 40 }}>
+      <ArrowUp size={20} />
+    </button>
   );
 }
 
@@ -371,7 +402,8 @@ export default function WealthCompass() {
 
   const [alertSettings, setAlertSettings] = useState({
     safeMax: 40, speculativeMax: 20, highRatePct: 12, dtiMax: 43, runwayMin: 3,
-    enabled: { safe: true, speculative: true, cashflow: true, rate: true, due: true, milestone: true, dti: true, runway: true },
+    concentrationMax: 30, drawdownMax: 15,
+    enabled: { safe: true, speculative: true, cashflow: true, rate: true, due: true, milestone: true, dti: true, runway: true, concentration: true, drawdown: true },
   });
   const [simSettings, setSimSettings] = useState({ defaultRate: 11, defaultTermYears: 20, defaultDownPct: 30, defaultGoalReturn: 8, unitFormat: "compact" });
   const [dashboardSections, setDashboardSections] = useState(DEFAULT_DASHBOARD_SECTIONS);
@@ -392,7 +424,7 @@ export default function WealthCompass() {
           await window.storage.set("wealth-core", JSON.stringify(seed), false).catch(() => {});
         }
         const s1 = await window.storage.get("alert-settings").catch(() => null);
-        if (s1?.value) setAlertSettings(JSON.parse(s1.value));
+        if (s1?.value) { const saved = JSON.parse(s1.value); setAlertSettings((prev) => ({ ...prev, ...saved, enabled: { ...prev.enabled, ...saved.enabled } })); }
         const s2 = await window.storage.get("sim-settings").catch(() => null);
         if (s2?.value) setSimSettings(JSON.parse(s2.value));
         const s3 = await window.storage.get("chat-history").catch(() => null);
@@ -429,8 +461,9 @@ export default function WealthCompass() {
   const tierTotals = { 1: 0, 2: 0, 3: 0, 4: 0 };
   assets.forEach((a) => { const t = a.tierOverride || CATEGORIES[a.category]?.tier || 3; tierTotals[t] += Number(a.value) || 0; });
   const allocation = Object.entries(assets.reduce((acc, a) => { acc[a.category] = (acc[a.category] || 0) + (Number(a.value) || 0); return acc; }, {}))
-    .map(([cat, value]) => ({ name: CATEGORIES[cat]?.label || cat, value, color: TIERS[CATEGORIES[cat]?.tier || 3].color }))
-    .filter((d) => d.value > 0);
+    .map(([cat, value]) => ({ name: CATEGORIES[cat]?.label || cat, value, color: categoryColor(cat) }))
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value);
 
   // auto cashflow from connected-account transactions (mock), avg last 3 months
   const recentTx = transactions.slice(-3);
@@ -462,7 +495,7 @@ export default function WealthCompass() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [netWorth, totalAssets, totalLiabilities, loaded]);
 
-  const alerts = computeAlerts({ liabilities, goals, tierTotals, alertSettings, backEndDTI, liquidityRunway, netCashflow, hasIncome: monthlyIncome > 0, hasExpense: monthlyExpense > 0 });
+  const alerts = computeAlerts({ liabilities, goals, tierTotals, alertSettings, backEndDTI, liquidityRunway, netCashflow, hasIncome: monthlyIncome > 0, hasExpense: monthlyExpense > 0, assets, totalAssets, netWorth, netWorthHistory });
   const reminders = computeReminders({ goals, liabilities, assets });
 
   const tabs = [
@@ -493,8 +526,8 @@ export default function WealthCompass() {
       <div style={{ borderBottom: `1px solid ${C.border}`, background: C.headerBg, position: "sticky", top: 0, zIndex: 20, backdropFilter: "blur(8px)" }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-5 py-3 sm:py-4 flex items-center justify-between flex-wrap gap-y-2">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg, ${C.accent}, ${C.accentText})`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <Compass size={18} color="#100C18" />
+            <div style={{ width: 34, height: 34, borderRadius: 10, background: `linear-gradient(135deg, ${C.accentSoft}, ${C.accent})`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <Compass size={18} color={C.text} />
             </div>
             <div className="min-w-0">
               <div className="text-sm sm:text-xl truncate" style={{ fontFamily: "'Cormorant Garamond', serif", fontWeight: 700, lineHeight: 1.2 }}>WEALTH MANAGEMENT</div>
@@ -536,7 +569,7 @@ export default function WealthCompass() {
                 backEndDTI={backEndDTI} liquidityRunway={liquidityRunway} liquidAssets={liquidAssets}
                 totalMonthlyDebtService={totalMonthlyDebtService} monthlyIncome={monthlyIncome} monthlyExpense={monthlyExpense}
                 netCashflow={netCashflow} goals={goals} alerts={alerts} assets={assets}
-                dashboardSections={dashboardSections} setDashboardSections={setDashboardSections}
+                dashboardSections={dashboardSections}
               />
             )}
             {tab === "assets" && (
@@ -558,20 +591,22 @@ export default function WealthCompass() {
                 goals={goals} allocation={allocation} netWorth={netWorth} />
             )}
             {tab === "settings" && (
-              <SettingsTab alertSettings={alertSettings} setAlertSettings={setAlertSettings} simSettings={simSettings} setSimSettings={setSimSettings} />
+              <SettingsTab alertSettings={alertSettings} setAlertSettings={setAlertSettings} simSettings={simSettings} setSimSettings={setSimSettings}
+                dashboardSections={dashboardSections} setDashboardSections={setDashboardSections} />
             )}
             <div className="mt-5">
-              <BottomNav tabs={tabs} tab={tab} setTab={setTab} homeTab="alerts" />
+              <BottomNav tabs={tabs} tab={tab} setTab={setTab} />
             </div>
           </div>
         )}
       </div>
+      <ScrollToTopButton />
     </div>
   );
 }
 
 /* -------------------------------- ALERT ENGINE -------------------------------- */
-function computeAlerts({ liabilities, goals, tierTotals, alertSettings, backEndDTI, liquidityRunway, netCashflow, hasIncome, hasExpense }) {
+function computeAlerts({ liabilities, goals, tierTotals, alertSettings, backEndDTI, liquidityRunway, netCashflow, hasIncome, hasExpense, assets, totalAssets, netWorth, netWorthHistory }) {
   const list = [];
   const total = Object.values(tierTotals).reduce((a, b) => a + b, 0) || 1;
   const safePct = (tierTotals[1] / total) * 100;
@@ -593,6 +628,14 @@ function computeAlerts({ liabilities, goals, tierTotals, alertSettings, backEndD
     const fv = current * Math.pow(1 + r, monthsLeft) + contrib * ((Math.pow(1 + r, monthsLeft) - 1) / (r || 0.0001)) * (1 + r);
     if (monthsLeft > 0 && fv < Number(g.targetAmount) * 0.9) list.push({ id: `goal-${g.id}`, level: "warn", title: `Mục tiêu "${g.name}" có thể chậm tiến độ`, detail: `Dự phóng đạt ${fmt(fv)} vào ${g.targetDate}, thấp hơn mục tiêu ${fmt(g.targetAmount)}. Cân nhắc tăng đóng góp hoặc dời thời hạn.` });
   });
+  if (s.enabled.concentration && totalAssets > 0) {
+    const biggest = [...assets].sort((a, b) => (Number(b.value) || 0) - (Number(a.value) || 0))[0];
+    if (biggest) { const pct = ((Number(biggest.value) || 0) / totalAssets) * 100; if (pct > s.concentrationMax) list.push({ id: "concentration-high", level: pct > 60 ? "danger" : "warn", title: `Tài sản đang tập trung nhiều vào "${biggest.name}"`, detail: `Khoản này chiếm ${pct.toFixed(0)}% tổng tài sản, vượt ngưỡng ${s.concentrationMax}%. Rủi ro tập trung cao nếu giá trị tài sản này biến động mạnh.` }); }
+  }
+  if (s.enabled.drawdown && netWorthHistory.length >= 2) {
+    const peak = Math.max(...netWorthHistory.map((h) => h.netWorth));
+    if (peak > 0) { const drawdownPct = ((peak - netWorth) / peak) * 100; if (drawdownPct > s.drawdownMax) list.push({ id: "drawdown-high", level: drawdownPct > 25 ? "danger" : "warn", title: "Tài sản ròng đang giảm so với đỉnh gần đây", detail: `Đang thấp hơn ${drawdownPct.toFixed(0)}% so với đỉnh ${fmt(peak)}, vượt ngưỡng ${s.drawdownMax}%.` }); }
+  }
   return list;
 }
 
@@ -644,15 +687,15 @@ function AlertsOverviewTab({ alerts, reminders }) {
     <div className="flex flex-col gap-4 sm:gap-5">
       <Card>
         <CollapsibleHeader title="Rủi ro" open={riskOpen} onToggle={() => setRiskOpen((o) => !o)}
-          badge={alerts.length > 0 && <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 99, background: C.danger + "22", color: C.danger }}>{alerts.length}</span>} />
+          badge={alerts.length > 0 && <span style={{ fontSize: 11, padding: "2px 9px", borderRadius: 99, background: C.statusCritical + "22", color: C.statusCritical }}>{alerts.length}</span>} />
         {riskOpen && (alerts.length === 0 ? <EmptyState text="Không có cảnh báo rủi ro nào — mọi chỉ số trong ngưỡng an toàn." /> : (
           <div className="flex flex-col gap-3">
-            {alerts.map((a) => (
-              <div key={a.id} className="rounded-xl p-4" style={{ background: C.bg, border: `1px solid ${a.level === "danger" ? C.danger : C.accent}55` }}>
-                <div className="flex items-center gap-2 mb-1.5"><AlertTriangle size={15} color={a.level === "danger" ? C.danger : C.accent} /><div style={{ fontSize: 14, fontWeight: 600 }}>{a.title}</div></div>
+            {[...alerts].sort((a, b) => (a.level === "danger" ? 0 : 1) - (b.level === "danger" ? 0 : 1)).map((a) => { const lc = a.level === "danger" ? C.statusCritical : C.statusWarning; return (
+              <div key={a.id} className="rounded-xl p-4" style={{ background: lc + "14", border: `1px solid ${lc}55` }}>
+                <div className="flex items-center gap-2 mb-1.5"><AlertTriangle size={15} color={lc} /><div style={{ fontSize: 14, fontWeight: 600 }}>{a.title}</div></div>
                 <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6 }}>{a.detail}</div>
               </div>
-            ))}
+            ); })}
           </div>
         ))}
       </Card>
@@ -687,9 +730,9 @@ const DASHBOARD_SECTIONS = [
 ];
 const DEFAULT_DASHBOARD_SECTIONS = Object.fromEntries(DASHBOARD_SECTIONS.map((s) => [s.key, true]));
 
-function DashboardCustomizeModal({ sections, onChange, onReset, onClose }) {
+function DashboardSectionsSettings({ sections, onChange, onReset }) {
   return (
-    <ModalShell title="Tùy chỉnh hiển thị Tổng quan" onClose={onClose}>
+    <>
       <div style={{ fontSize: 11, color: C.textFaint, marginBottom: 10 }}>Chọn phần thông tin muốn hiển thị trong tab Tổng quan (3 thẻ tổng tài sản/nợ/tài sản ròng luôn hiển thị).</div>
       <div className="flex flex-col">
         {DASHBOARD_SECTIONS.map((s) => {
@@ -703,16 +746,12 @@ function DashboardCustomizeModal({ sections, onChange, onReset, onClose }) {
           );
         })}
       </div>
-      <div className="flex items-center gap-2 mt-4">
-        <GhostButton onClick={onReset} style={{ flex: 1, justifyContent: "center" }}><RotateCcw size={14} /> Đặt lại mặc định</GhostButton>
-        <GoldButton onClick={onClose} style={{ flex: 1, justifyContent: "center" }}><Check size={15} /> Xong</GoldButton>
-      </div>
-    </ModalShell>
+      <GhostButton onClick={onReset} style={{ justifyContent: "center", width: "100%", marginTop: 12 }}><RotateCcw size={14} /> Đặt lại mặc định</GhostButton>
+    </>
   );
 }
 
-function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTotals, netWorthHistory, backEndDTI, liquidityRunway, liquidAssets, totalMonthlyDebtService, monthlyIncome, monthlyExpense, netCashflow, goals, alerts, assets, dashboardSections, setDashboardSections }) {
-  const [customizeOpen, setCustomizeOpen] = useState(false);
+function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTotals, netWorthHistory, backEndDTI, liquidityRunway, liquidAssets, totalMonthlyDebtService, monthlyIncome, monthlyExpense, netCashflow, goals, alerts, assets, dashboardSections }) {
   const sec = (key) => dashboardSections[key] !== false;
   const total = Object.values(tierTotals).reduce((a, b) => a + b, 0) || 1;
   const dti = dtiBand(backEndDTI); const runway = runwayBand(liquidityRunway);
@@ -737,10 +776,6 @@ function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTo
 
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
-      <div className="flex items-center justify-end">
-        <GhostButton onClick={() => setCustomizeOpen(true)}><Settings size={14} /> Tùy chỉnh hiển thị</GhostButton>
-      </div>
-
       <Card style={{ padding: 0 }}>
         <div className="grid grid-cols-3">
           <div className="p-3 sm:p-4" style={{ borderRight: `1px solid ${C.border}` }}>
@@ -769,9 +804,9 @@ function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTo
                 <YAxis tickFormatter={fmt} tick={{ fill: C.textFaint, fontSize: 11 }} axisLine={false} tickLine={false} width={55} />
                 <Tooltip formatter={(v) => fmtFull(v)} contentStyle={{ background: C.bgPanel2, border: `1px solid ${C.borderLight}`, borderRadius: 10, color: C.text }} />
                 <Legend wrapperStyle={{ fontSize: 12, color: C.textMuted }} />
-                <Line type="monotone" dataKey="assets" name="Tài sản" stroke={C.accentText} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="liabilities" name="Nợ" stroke={C.danger} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="netWorth" name="Tài sản ròng" stroke={C.accent} strokeWidth={2.5} dot={{ fill: C.accent, r: 3 }} />
+                <Line type="monotone" dataKey="assets" name="Tài sản" stroke={C.catBlue} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="liabilities" name="Nợ" stroke={C.catRed} strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="netWorth" name="Tài sản ròng" stroke={C.catGreen} strokeWidth={2.5} dot={{ fill: C.catGreen, r: 3 }} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -807,7 +842,7 @@ function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTo
           <Card>
             <SimpleTitle title="Phân tầng rủi ro" />
             <div className="flex flex-col gap-2.5 mt-1">
-              {[4, 3, 2, 1].map((tier) => { const pct = (tierTotals[tier] / total) * 100; return (
+              {[1, 2, 3, 4].sort((a, b) => tierTotals[b] - tierTotals[a]).map((tier) => { const pct = (tierTotals[tier] / total) * 100; return (
                 <div key={tier}>
                   <div className="flex items-center justify-between text-xs mb-1"><span style={{ color: C.textMuted }}>{TIERS[tier].label}</span><span>{pct.toFixed(0)}%</span></div>
                   <div style={{ height: 10, background: C.bg, borderRadius: 6, overflow: "hidden" }}><div style={{ width: `${pct}%`, height: "100%", background: TIERS[tier].color, borderRadius: 6 }} /></div>
@@ -903,10 +938,6 @@ function Dashboard({ totalAssets, totalLiabilities, netWorth, allocation, tierTo
         </Card>
       )}
 
-      {customizeOpen && (
-        <DashboardCustomizeModal sections={dashboardSections} onChange={setDashboardSections}
-          onReset={() => setDashboardSections(DEFAULT_DASHBOARD_SECTIONS)} onClose={() => setCustomizeOpen(false)} />
-      )}
     </div>
   );
 }
@@ -925,13 +956,14 @@ function AssetsTab({ assets, setAssets, liabilities, setLiabilities, accounts, s
         <SimpleTitle title="Danh mục tài sản" action={<GoldButton onClick={() => setModal({ type: "asset", editing: null })}><Plus size={15} /> Thêm tài sản</GoldButton>} />
         {assets.length === 0 ? <EmptyState text="Chưa có tài sản nào." /> : (
           <div className="flex flex-col gap-2">
-            {assets.map((a) => {
+            {[...assets].sort((x, y) => (Number(y.value) || 0) - (Number(x.value) || 0)).map((a) => {
               const cat = CATEGORIES[a.category]; const Icon = cat?.icon || DollarSign; const tier = TIERS[a.tierOverride || cat?.tier || 3];
+              const catColor = categoryColor(a.category);
               const gain = (Number(a.value) || 0) - (Number(a.costBasis) || 0);
               return (
                 <div key={a.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
                   <div className="flex items-center gap-3 min-w-0">
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: C.bgPanel2, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={16} color={tier.color} /></div>
+                    <div style={{ width: 36, height: 36, borderRadius: 10, background: catColor + "1E", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><Icon size={16} color={catColor} /></div>
                     <div className="min-w-0">
                       <div style={{ fontSize: 14, fontWeight: 500 }}>{a.name} {a.source === "synced" && <span style={{ fontSize: 10, color: C.success, marginLeft: 4 }}>● đồng bộ</span>}</div>
                       <div style={{ fontSize: 11, color: C.textFaint }}>{cat?.label} · {tier.label}{a.updatedAt ? ` · cập nhật ${a.updatedAt}` : ""}</div>
@@ -954,7 +986,7 @@ function AssetsTab({ assets, setAssets, liabilities, setLiabilities, accounts, s
         {liabilities.length === 0 ? <EmptyState text="Chưa có khoản vay nào." /> : (
           <div className="flex flex-col gap-2">
             {liabilities.map((l) => (
-              <div key={l.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl px-4 py-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+              <div key={l.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl px-4 py-3" style={{ background: C.catOrange + "0D", border: `1px solid ${C.catOrange}44`, borderLeft: `3px solid ${C.catOrange}` }}>
                 <div className="min-w-0"><div style={{ fontSize: 14, fontWeight: 500 }}>{l.name}</div><div style={{ fontSize: 11, color: C.textFaint }}>Lãi suất {l.interestRate || 0}%/năm{l.dueDate ? ` · đáo hạn ${l.dueDate}` : ""}{liabilityMonthlyPayment(l) > 0 ? ` · trả góp ${fmtFull(liabilityMonthlyPayment(l))}/th` : ""}</div></div>
                 <div className="flex items-center justify-between sm:justify-end gap-4">
                   <div style={{ fontSize: 14, fontWeight: 600, color: C.danger }}>{fmtFull(l.balance)}</div>
@@ -1055,13 +1087,18 @@ function LiabilityModal({ editing, onClose, onSave }) {
 
 /* -------------------------------- GOALS TAB -------------------------------- */
 const GOAL_TEMPLATES = [
-  { key: "emergency", name: "Quỹ khẩn cấp", targetAmount: 150000000, years: 1.5, annualReturn: 5, icon: Shield },
-  { key: "firsthome", name: "Mua nhà lần đầu (trả trước)", targetAmount: 800000000, years: 5, annualReturn: 7, icon: Home },
-  { key: "wedding", name: "Đám cưới", targetAmount: 300000000, years: 2, annualReturn: 5, icon: Star },
-  { key: "childeducation", name: "Học phí con", targetAmount: 1500000000, years: 15, annualReturn: 8, icon: Target },
-  { key: "retirement", name: "Quỹ nghỉ hưu", targetAmount: 8000000000, years: 25, annualReturn: 8, icon: Wallet },
-  { key: "car", name: "Mua xe", targetAmount: 600000000, years: 3, annualReturn: 6, icon: TrendingUp },
+  { key: "emergency", name: "Quỹ khẩn cấp", targetAmount: 150000000, years: 1.5, annualReturn: 5, icon: Shield, colorKey: "catBlue" },
+  { key: "firsthome", name: "Mua nhà lần đầu (trả trước)", targetAmount: 800000000, years: 5, annualReturn: 7, icon: Home, colorKey: "catOrange" },
+  { key: "wedding", name: "Đám cưới", targetAmount: 300000000, years: 2, annualReturn: 5, icon: Star, colorKey: "catMagenta" },
+  { key: "childeducation", name: "Học phí con", targetAmount: 1500000000, years: 15, annualReturn: 8, icon: Target, colorKey: "catYellow" },
+  { key: "retirement", name: "Quỹ nghỉ hưu", targetAmount: 8000000000, years: 25, annualReturn: 8, icon: Wallet, colorKey: "catViolet" },
+  { key: "car", name: "Mua xe", targetAmount: 600000000, years: 3, annualReturn: 6, icon: TrendingUp, colorKey: "catAqua" },
 ];
+function goalColor(goalName, index) {
+  const match = GOAL_TEMPLATES.find((t) => t.name === goalName);
+  const key = match ? match.colorKey : GOAL_TEMPLATES[index % GOAL_TEMPLATES.length].colorKey;
+  return C[key];
+}
 
 function GoalsTab({ goals, setGoals, netWorth, netCashflow, netWorthHistory, defaultReturn }) {
   const [modal, setModal] = useState(false);
@@ -1090,8 +1127,8 @@ function GoalsTab({ goals, setGoals, netWorth, netCashflow, netWorthHistory, def
         <SimpleTitle title="Mẫu mục tiêu theo vòng đời" />
         <div className="flex gap-2 flex-wrap">
           {GOAL_TEMPLATES.map((t) => (
-            <button key={t.key} onClick={() => { setTemplate(t); setEditing(null); setModal(true); }} className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm" style={{ background: C.bg, border: `1px solid ${C.borderLight}`, color: C.textMuted }}>
-              <t.icon size={13} color={C.accent} /> {t.name}
+            <button key={t.key} onClick={() => { setTemplate(t); setEditing(null); setModal(true); }} className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm" style={{ background: C[t.colorKey] + "14", border: `1px solid ${C[t.colorKey]}44`, color: C.textMuted }}>
+              <t.icon size={13} color={C[t.colorKey]} /> {t.name}
             </button>
           ))}
         </div>
@@ -1101,7 +1138,7 @@ function GoalsTab({ goals, setGoals, netWorth, netCashflow, netWorthHistory, def
         <SimpleTitle title="Mục tiêu tài chính" action={<GoldButton onClick={() => { setEditing(null); setTemplate(null); setModal(true); }}><Plus size={15} /> Thêm mục tiêu</GoldButton>} />
         {goals.length === 0 ? <EmptyState text="Chưa có mục tiêu nào." /> : (
           <div className="flex flex-col gap-4">
-            {goals.map((g) => <GoalCard key={g.id} g={g} growth={growth} onEdit={() => { setEditing(g); setTemplate(null); setModal(true); }} onRemove={() => remove(g.id)} />)}
+            {goals.map((g, i) => <GoalCard key={g.id} g={g} growth={growth} color={goalColor(g.name, i)} onEdit={() => { setEditing(g); setTemplate(null); setModal(true); }} onRemove={() => remove(g.id)} />)}
           </div>
         )}
       </Card>
@@ -1110,7 +1147,7 @@ function GoalsTab({ goals, setGoals, netWorth, netCashflow, netWorthHistory, def
   );
 }
 
-function GoalCard({ g, growth, onEdit, onRemove }) {
+function GoalCard({ g, growth, color, onEdit, onRemove }) {
   const now = new Date(); const target = new Date(g.targetDate);
   const monthsLeft = Math.max(0, (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth()));
   const r = (Number(g.annualReturn) || 8) / 100 / 12; const contrib = Number(g.monthlyContribution) || 0; const current = Number(g.currentAmount) || 0;
@@ -1123,17 +1160,17 @@ function GoalCard({ g, growth, onEdit, onRemove }) {
   const requiredContrib = monthsLeft > 0 ? Math.max(0, (targetAmt - fvFromCurrent) / (annuityFactor || 1)) : 0;
 
   return (
-    <div className="rounded-xl p-4" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+    <div className="rounded-xl p-4" style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `3px solid ${color}` }}>
       <div className="flex items-center justify-between mb-2">
         <div><div style={{ fontSize: 15, fontWeight: 600 }}>{g.name}</div><div style={{ fontSize: 11, color: C.textFaint }}>Mục tiêu {fmtFull(g.targetAmount)} vào {g.targetDate}</div></div>
         <div className="flex items-center gap-3"><button onClick={onEdit} style={{ color: C.textMuted }}><Pencil size={14} /></button><button onClick={onRemove} style={{ color: C.danger }}><Trash2 size={14} /></button></div>
       </div>
-      <div style={{ height: 8, background: C.bgPanel2, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}><div style={{ width: `${pct}%`, height: "100%", background: onTrack ? C.success : C.accent, borderRadius: 5 }} /></div>
+      <div style={{ height: 8, background: C.bgPanel2, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}><div style={{ width: `${pct}%`, height: "100%", background: onTrack ? C.success : C.statusWarning, borderRadius: 5 }} /></div>
       <div className="grid grid-cols-2 gap-3 text-xs" style={{ color: C.textMuted }}>
         <div>Dự phóng đạt: <b style={{ color: C.text }}>{fmt(fv)}</b> ({pct.toFixed(0)}%)</div>
         <div>Đóng góp cần thiết: <b style={{ color: C.text }}>{fmt(requiredContrib)}/th</b></div>
       </div>
-      <div style={{ fontSize: 11, color: onTrack ? C.success : C.accent, marginTop: 6 }}>{onTrack ? "Đang trên đà đạt mục tiêu" : "Có thể cần tăng đóng góp hoặc điều chỉnh thời hạn"}</div>
+      <div style={{ fontSize: 11, color: onTrack ? C.success : C.statusWarning, marginTop: 6 }}>{onTrack ? "Đang trên đà đạt mục tiêu" : "Có thể cần tăng đóng góp hoặc điều chỉnh thời hạn"}</div>
       {growth !== null && (
         <div style={{ fontSize: 11, color: C.textFaint, marginTop: 4 }}>
           Giả định lợi nhuận {g.annualReturn}%/năm cho mục tiêu này, so với tăng trưởng tài sản ròng thực tế gần đây ~{growth.toFixed(1)}%/năm.
@@ -1170,10 +1207,14 @@ function GoalModal({ editing, template, defaultReturn, onClose, onSave }) {
 /* -------------------------------- ADVISOR TAB -------------------------------- */
 function AdvisorTab({ messages, setMessages, snapshot, bookings, setBookings, recommendations }) {
   const [input, setInput] = useState(""); const [loading, setLoading] = useState(false);
-  const endRef = useRef(null);
+  const chatBodyRef = useRef(null);
   const [bookingAdvisor, setBookingAdvisor] = useState(null);
   const [chattingAdvisor, setChattingAdvisor] = useState(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const el = chatBodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, loading]);
 
   const sortedAdvisors = [...ADVISORS].sort((x, y) => (recommendations[y.id] ? 1 : 0) - (recommendations[x.id] ? 1 : 0));
 
@@ -1193,7 +1234,7 @@ function AdvisorTab({ messages, setMessages, snapshot, bookings, setBookings, re
     <div className="flex flex-col gap-4 sm:gap-5">
       <Card style={{ display: "flex", flexDirection: "column", height: "62vh" }}>
         <SimpleTitle title="Cố vấn AI" />
-        <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
+        <div ref={chatBodyRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4 }}>
           {messages.length === 0 && (
             <div className="flex flex-col gap-2">
               <div style={{ fontSize: 13, color: C.textFaint, marginBottom: 4 }}>Gợi ý câu hỏi:</div>
@@ -1206,7 +1247,6 @@ function AdvisorTab({ messages, setMessages, snapshot, bookings, setBookings, re
             </div>
           ))}
           {loading && <div style={{ alignSelf: "flex-start", color: C.textFaint, fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}><Loader2 size={14} className="animate-spin" /> Đang phân tích...</div>}
-          <div ref={endRef} />
         </div>
         <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: `1px solid ${C.border}` }}>
           <TextInput value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && send()} placeholder="Hỏi về một kịch bản tài chính..." />
@@ -1223,7 +1263,7 @@ function AdvisorTab({ messages, setMessages, snapshot, bookings, setBookings, re
                 <div className="flex items-center gap-2 flex-wrap">
                   <span style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</span>
                   <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, background: C.accentSoft, color: C.accentText }}>{a.level}</span>
-                  {rec && <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, background: C.accent + "22", color: C.accentText }}>Đề xuất cho bạn</span>}
+                  {rec && <span style={{ fontSize: 10, padding: "1px 7px", borderRadius: 99, background: C.catYellow + "2A", color: C.catYellowText }}>Đề xuất cho bạn</span>}
                 </div>
                 <div style={{ fontSize: 12, color: C.textMuted }}>{a.title}</div>
                 <div style={{ fontSize: 11, color: C.textFaint }}>{a.specialties.join(" · ")}</div>
@@ -1526,23 +1566,42 @@ function RuleRow({ enabled, onToggle, label, children }) {
     </>
   );
 }
+function RuleGroupLabel({ children, first }) {
+  return (
+    <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: C.accent, textTransform: "uppercase", letterSpacing: "0.06em", marginTop: first ? 0 : 6, paddingTop: first ? 0 : 10, borderTop: first ? "none" : `1px solid ${C.border}` }}>{children}</div>
+  );
+}
 
-function SettingsTab({ alertSettings, setAlertSettings, simSettings, setSimSettings }) {
+function SettingsTab({ alertSettings, setAlertSettings, simSettings, setSimSettings, dashboardSections, setDashboardSections }) {
   const toggle = (key) => setAlertSettings({ ...alertSettings, enabled: { ...alertSettings.enabled, [key]: !alertSettings.enabled[key] } });
   return (
     <div className="flex flex-col gap-4 sm:gap-5">
       <Card>
         <SimpleTitle title="Ngưỡng & quy tắc cảnh báo" />
         <div className="grid gap-x-6 gap-y-4 items-center" style={{ gridTemplateColumns: "1fr auto" }}>
+          <RuleGroupLabel first>Phân bổ rủi ro</RuleGroupLabel>
           <RuleRow enabled={alertSettings.enabled.safe} onToggle={() => toggle("safe")} label="Tỷ trọng an toàn vượt ngưỡng"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.safeMax} onChange={(e) => setAlertSettings({ ...alertSettings, safeMax: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%</span></div></RuleRow>
           <RuleRow enabled={alertSettings.enabled.speculative} onToggle={() => toggle("speculative")} label="Tỷ trọng đầu cơ vượt ngưỡng"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.speculativeMax} onChange={(e) => setAlertSettings({ ...alertSettings, speculativeMax: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%</span></div></RuleRow>
+          <RuleRow enabled={alertSettings.enabled.concentration} onToggle={() => toggle("concentration")} label="Một tài sản chiếm tỷ trọng quá lớn"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.concentrationMax} onChange={(e) => setAlertSettings({ ...alertSettings, concentrationMax: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%</span></div></RuleRow>
+
+          <RuleGroupLabel>Nợ vay & tín dụng</RuleGroupLabel>
           <RuleRow enabled={alertSettings.enabled.rate} onToggle={() => toggle("rate")} label="Lãi vay vượt ngưỡng"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.highRatePct} onChange={(e) => setAlertSettings({ ...alertSettings, highRatePct: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%/năm</span></div></RuleRow>
           <RuleRow enabled={alertSettings.enabled.due} onToggle={() => toggle("due")} label="Khoản vay sắp đáo hạn (30 ngày)" />
-          <RuleRow enabled={alertSettings.enabled.cashflow} onToggle={() => toggle("cashflow")} label="Dòng tiền tháng âm" />
-          <RuleRow enabled={alertSettings.enabled.milestone} onToggle={() => toggle("milestone")} label="Mục tiêu có nguy cơ chậm tiến độ" />
           <RuleRow enabled={alertSettings.enabled.dti} onToggle={() => toggle("dti")} label="DTI vượt ngưỡng"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.dtiMax} onChange={(e) => setAlertSettings({ ...alertSettings, dtiMax: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%</span></div></RuleRow>
+
+          <RuleGroupLabel>Dòng tiền & thanh khoản</RuleGroupLabel>
+          <RuleRow enabled={alertSettings.enabled.cashflow} onToggle={() => toggle("cashflow")} label="Dòng tiền tháng âm" />
           <RuleRow enabled={alertSettings.enabled.runway} onToggle={() => toggle("runway")} label="Quỹ thanh khoản dưới ngưỡng"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.runwayMin} onChange={(e) => setAlertSettings({ ...alertSettings, runwayMin: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>tháng</span></div></RuleRow>
+
+          <RuleGroupLabel>Mục tiêu & biến động tài sản</RuleGroupLabel>
+          <RuleRow enabled={alertSettings.enabled.milestone} onToggle={() => toggle("milestone")} label="Mục tiêu có nguy cơ chậm tiến độ" />
+          <RuleRow enabled={alertSettings.enabled.drawdown} onToggle={() => toggle("drawdown")} label="Tài sản ròng giảm so với đỉnh"><div className="flex items-center gap-2"><TextInput type="number" style={{ width: 70 }} value={alertSettings.drawdownMax} onChange={(e) => setAlertSettings({ ...alertSettings, drawdownMax: Number(e.target.value) })} /><span style={{ color: C.textFaint, fontSize: 12, width: 46, display: "inline-block" }}>%</span></div></RuleRow>
         </div>
+      </Card>
+
+      <Card>
+        <SimpleTitle title="Tùy chỉnh hiển thị Tổng quan" />
+        <DashboardSectionsSettings sections={dashboardSections} onChange={setDashboardSections} onReset={() => setDashboardSections(DEFAULT_DASHBOARD_SECTIONS)} />
       </Card>
 
       <Card>
